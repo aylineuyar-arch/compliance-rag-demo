@@ -136,7 +136,7 @@ class RAGPipeline:
 
         prompt = f"""You are a compliance analyst assistant at a financial institution.
 Answer the question below using ONLY the provided compliance document excerpts.
-For each factual claim in your answer, cite the source document in brackets (e.g., [aml_policy.txt]).
+Write in clear, professional prose. Do not include any document names, file references, or citations.
 If the provided context does not contain enough information to answer fully, say so explicitly.
 Do not invent policies, thresholds, or procedures not present in the excerpts.
 

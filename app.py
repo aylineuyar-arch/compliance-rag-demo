@@ -19,19 +19,14 @@ st.set_page_config(
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("⚖️ Compliance RAG")
-    st.caption("Powered by Claude + sentence-transformers")
+    st.caption("AI-powered policy Q&A for financial services")
     st.divider()
     st.markdown("""
 **Documents indexed:**
-- `aml_policy.txt` — Anti-Money Laundering
-- `kyc_guidelines.txt` — Know Your Customer
-- `trade_compliance.txt` — Trade Surveillance
-- `data_governance.txt` — Data Governance & AI
-
-**Stack:**
-- Claude (claude-haiku-4-5)
-- sentence-transformers (local embeddings)
-- numpy cosine similarity
+- Anti-Money Laundering Policy
+- Know Your Customer Guidelines
+- Trade Surveillance Policy
+- Data Governance Framework
 
 **[View on GitHub](https://github.com/aylineuyar-arch/compliance-rag-demo)**
     """)
@@ -44,7 +39,7 @@ with st.sidebar:
 # ── Load pipeline (cached — only runs once per session) ───────────────────────
 DOCUMENTS_DIR = os.path.join(os.path.dirname(__file__), "documents")
 
-@st.cache_resource(show_spinner="Loading documents and building embeddings...")
+@st.cache_resource(show_spinner="Loading policy documents...")
 def load_pipeline():
     return RAGPipeline(DOCUMENTS_DIR)
 
@@ -80,16 +75,6 @@ if not st.session_state.messages:
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"].replace("$", r"\$"))
-        # Show retrieved sources under assistant messages
-        if msg["role"] == "assistant" and "chunks" in msg:
-            with st.expander("View retrieved sources", expanded=False):
-                for i, chunk in enumerate(msg["chunks"], 1):
-                    source = chunk["source"].replace(".txt", "").replace("_", " ").title()
-                    st.markdown(f"**[{i}] {source}** — relevance {chunk['similarity']:.0%}")
-                    st.progress(chunk["similarity"])
-                    st.caption(chunk["text"][:400] + ("..." if len(chunk["text"]) > 400 else ""))
-                    if i < len(msg["chunks"]):
-                        st.divider()
 
 # ── Chat input — always pinned at the bottom ──────────────────────────────────
 query = st.chat_input("Ask a compliance question...")
@@ -105,36 +90,24 @@ if query:
     with st.chat_message("user"):
         st.markdown(query)
 
-    # Show step-by-step status then answer
     with st.chat_message("assistant"):
-        with st.status("Thinking...", expanded=True) as status:
-            st.write("Step 1 — Embedding your query...")
+        with st.status("Gathering information...", expanded=True) as status:
+            st.write("Searching policy documents...")
             chunks = pipeline.retrieve(query, top_k=3)
 
-            st.write("Step 2 — Retrieving relevant policy passages...")
+            st.write("Reading relevant sections...")
             for chunk in chunks:
                 source = chunk["source"].replace(".txt", "").replace("_", " ").title()
-                st.caption(f"Found: {source} (relevance {chunk['similarity']:.0%})")
+                st.caption(f"— {source}")
 
-            st.write("Step 3 — Generating cited answer with Claude...")
+            st.write("Preparing your answer...")
             answer = pipeline.generate(query, chunks)
-            status.update(label="Done", state="complete", expanded=False)
+            status.update(label="Here's what I found", state="complete", expanded=False)
 
-        # Escape $ signs so Streamlit doesn't render them as LaTeX math
         st.markdown(answer.replace("$", r"\$"))
-
-        with st.expander("View retrieved sources", expanded=False):
-            for i, chunk in enumerate(chunks, 1):
-                source = chunk["source"].replace(".txt", "").replace("_", " ").title()
-                st.markdown(f"**[{i}] {source}** — relevance {chunk['similarity']:.0%}")
-                st.progress(chunk["similarity"])
-                st.caption(chunk["text"][:400] + ("..." if len(chunk["text"]) > 400 else ""))
-                if i < len(chunks):
-                    st.divider()
 
     # Save to history
     st.session_state.messages.append({
         "role": "assistant",
         "content": answer,
-        "chunks": chunks,
     })

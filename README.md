@@ -1,6 +1,6 @@
 # Compliance RAG Demo — Retrieval-Augmented Generation for Financial Services
 
-A working end-to-end RAG pipeline that answers compliance questions using synthetic financial services policy documents, with cited, auditable answers powered by Claude.
+A working end-to-end RAG pipeline that answers compliance questions using synthetic financial services policy documents, with clean conversational answers powered by Claude.
 
 ---
 
@@ -31,10 +31,10 @@ Cosine Similarity Search over Document Chunks
 Top-K Relevant Chunks Retrieved
     │  Returns the 3 most semantically similar passages with source filenames
     ▼
-Claude API (claude-haiku-4-5) — grounded generation with citations
+Claude API (claude-haiku-4-5) — grounded generation
     │  Prompt instructs Claude to answer only from retrieved context
     ▼
-Answer + Source Citations
+Clean conversational answer
 ```
 
 ---
@@ -83,7 +83,7 @@ export ANTHROPIC_API_KEY=your_key_here
 streamlit run app.py
 ```
 
-Opens a chatbot interface in your browser at `http://localhost:8501`. Type any compliance question or click an example. The UI shows the retrieval steps in real time — embedding, chunk retrieval with relevance scores, then Claude's cited answer.
+Opens a chatbot interface in your browser at `http://localhost:8501`. Type any compliance question or click an example. The UI shows retrieval steps in real time — searching documents, reading relevant sections, then delivering a clean conversational answer.
 
 **4b. Run the command-line demo**
 ```bash
@@ -91,36 +91,6 @@ python3 main.py
 ```
 
 Runs 4 preset queries automatically, then enters an interactive prompt. Results are saved to `results.csv` for import into Airtable or Google Sheets.
-
----
-
-## Sample Output
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-QUERY: What are the transaction monitoring thresholds for suspicious activity reporting?
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-RETRIEVED CONTEXT:
-[1] aml_policy.txt (similarity: 0.87)
-"Cash transactions of $10,000 or more in a single business day require Currency
-Transaction Report (CTR) filing with FinCEN within 15 calendar days..."
-
-[2] kyc_guidelines.txt (similarity: 0.71)
-"..."
-
-[3] data_governance.txt (similarity: 0.63)
-"..."
-
-ANSWER:
-Based on the AML Policy [aml_policy.txt], transaction monitoring thresholds include:
-cash transactions of $10,000 or more trigger a mandatory CTR filing within 15 days;
-structured transactions where cumulative cash activity exceeds $9,000 across two or
-more transactions are flagged; wire transfers of $3,000 or more require Travel Rule
-recordkeeping; and unusual activity exceeding 300% of the customer's 90-day average
-is escalated within 48 hours.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
 
 ---
 
