@@ -62,6 +62,7 @@ RAG answers are also auditable by design: the retrieved chunks are part of the s
 
 **1. Clone and navigate to the project**
 ```bash
+git clone https://github.com/aylineuyar-arch/compliance-rag-demo.git
 cd compliance-rag-demo
 ```
 
@@ -77,12 +78,19 @@ The sentence-transformers model (~90MB) will download automatically on first run
 export ANTHROPIC_API_KEY=your_key_here
 ```
 
-**4. Run the demo**
+**4a. Run the web UI (recommended)**
 ```bash
-python main.py
+streamlit run app.py
 ```
 
-The pipeline will load and chunk the four synthetic compliance documents, embed all chunks locally, then run four demo queries and print retrieved context plus Claude's cited answer for each.
+Opens a chatbot interface in your browser at `http://localhost:8501`. Type any compliance question or click an example. The UI shows the retrieval steps in real time — embedding, chunk retrieval with relevance scores, then Claude's cited answer.
+
+**4b. Run the command-line demo**
+```bash
+python3 main.py
+```
+
+Runs 4 preset queries automatically, then enters an interactive prompt. Results are saved to `results.csv` for import into Airtable or Google Sheets.
 
 ---
 
@@ -120,6 +128,7 @@ is escalated within 48 hours.
 
 | Component | Library | Why |
 |---|---|---|
+| Web UI | `streamlit` | Python-native, deploys to Streamlit Cloud for free |
 | Generation | `anthropic` / `claude-haiku-4-5` | Fast, cost-efficient, strong instruction-following |
 | Embeddings | `sentence-transformers` / `all-MiniLM-L6-v2` | Local inference, no API cost, strong semantic search |
 | Vector search | `numpy` (cosine similarity) | Zero overhead for demo-scale corpus (~100 chunks) |
@@ -127,13 +136,26 @@ is escalated within 48 hours.
 
 ---
 
-## Use Cases This Generalises To
+## Where This Would Be Used in Practice
 
-- **Trade operations policy lookup** — "What's the settlement fail escalation procedure for equity trades?"
-- **Onboarding workflow guidance** — "What documents are needed to onboard a PEP client in the UK?"
-- **Regulatory change impact analysis** — Ingest updated regulatory text and query for differences vs. current internal policy
-- **Internal audit support** — Map audit findings to specific policy clauses automatically
-- **Employee compliance Q&A** — Self-service portal for staff to query procedures without emailing Compliance
+This demo shows the core pattern that would underpin several real workflows at a financial institution:
+
+**1. Compliance help desk automation**
+Today, junior compliance analysts field repetitive policy questions from the front office — "can we onboard this type of entity?", "what's the wire reporting threshold?". A RAG system answers these instantly, with citations, freeing analysts for higher-judgment work. Estimated time savings: 30–50% of tier-1 compliance queries.
+
+**2. Regulatory change management**
+When a regulator issues updated guidance (new FinCEN thresholds, revised FATF country lists), compliance teams must identify which internal policies are affected. RAG over both old and new regulatory text surfaces the delta automatically, reducing manual gap analysis from days to minutes.
+
+**3. Audit and examination support**
+During a regulatory examination, examiners ask banks to produce evidence that specific policies exist and are followed. A RAG system over internal policy documents can instantly surface the relevant clause and its source, supporting faster examination response.
+
+**4. Onboarding workflow guidance**
+Relationship managers onboarding a new client type they haven't seen before (a foreign PEP, a crypto MSB) can query the KYC system in plain English and get a step-by-step requirements list with document citations — instead of escalating to Compliance or reading 40-page manuals.
+
+**5. Employee self-service compliance portal**
+A bank-wide internal chatbot where any employee can ask "am I allowed to trade this security?" or "what's the personal account dealing holding period?" — with answers grounded in current policy, not general LLM knowledge.
+
+**Why this matters for strategy roles:** The business case is straightforward — compliance headcount is expensive, regulatory risk is existential, and these queries are high-volume and highly repetitive. RAG is one of the few AI patterns where the ROI is immediate and the auditability requirement is already met by design.
 
 ---
 
@@ -142,8 +164,9 @@ is escalated within 48 hours.
 ```
 compliance-rag-demo/
 ├── README.md                    # This file
-├── requirements.txt             # anthropic, sentence-transformers, numpy
-├── main.py                      # Entry point — runs the 4 demo queries
+├── requirements.txt             # anthropic, sentence-transformers, numpy, streamlit
+├── app.py                       # Streamlit chatbot UI — step-by-step retrieval + chat history
+├── main.py                      # CLI demo — runs 4 preset queries, exports results.csv
 ├── rag_pipeline.py              # RAGPipeline class: embed, retrieve, generate
 ├── utils.py                     # Document loading and chunking helpers
 └── documents/

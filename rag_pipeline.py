@@ -49,16 +49,16 @@ class RAGPipeline:
         # --- Validate API key early so the error is clear ---
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            print("\n[ERROR] ANTHROPIC_API_KEY environment variable is not set.")
-            print("        Export it before running: export ANTHROPIC_API_KEY=your_key_here")
-            sys.exit(1)
+            raise ValueError(
+                "ANTHROPIC_API_KEY environment variable is not set. "
+                "Export it before running: export ANTHROPIC_API_KEY=your_key_here"
+            )
 
         # --- Load and chunk documents ---
         print(f"\nLoading documents from '{documents_dir}'...")
         documents = load_documents(documents_dir)
         if not documents:
-            print(f"[ERROR] No .txt files found in '{documents_dir}'")
-            sys.exit(1)
+            raise ValueError(f"No .txt files found in '{documents_dir}'")
 
         for name in documents:
             print(f"  Loaded: {name}")
