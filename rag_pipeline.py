@@ -16,6 +16,7 @@ Why no vector database?
 
 import os
 import sys
+from typing import Optional
 import numpy as np
 import anthropic
 from sentence_transformers import SentenceTransformer
@@ -122,8 +123,8 @@ class RAGPipeline:
 
         return results
 
-    def generate(self, query: str, retrieved_chunks: list[dict],
-                 chat_history: list[dict] | None = None) -> str:
+    def generate(self, query: str, retrieved_chunks: list,
+                 chat_history: Optional[list] = None) -> str:
         """
         Send the query, retrieved context, and optional conversation history to Claude.
 
@@ -194,7 +195,7 @@ Questions should be specific and operationally useful — not generic."""
         return [q.strip("- •123.").strip() for q in lines if q.strip()][:3]
 
     def ask(self, query: str, top_k: int = 3,
-            chat_history: list[dict] | None = None) -> dict:
+            chat_history: Optional[list] = None) -> dict:
         """
         Full RAG pipeline: retrieve → generate → suggest follow-ups.
 
