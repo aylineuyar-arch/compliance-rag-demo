@@ -9,34 +9,56 @@ import os
 import streamlit as st
 from rag_pipeline import RAGPipeline
 
-# ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Compliance RAG Demo",
+    page_title="Compliance Policy Q&A",
     page_icon="⚖️",
     layout="wide",
 )
 
+# Inject minimal CSS — tighten spacing, style chips
+st.markdown("""
+<style>
+    /* Tighten top padding */
+    .block-container { padding-top: 1.5rem !important; }
+
+    /* Chip-style tags */
+    .chip {
+        display: inline-block;
+        background: #1a1f2e;
+        border: 1px solid #4f8ef7;
+        color: #4f8ef7;
+        border-radius: 20px;
+        padding: 2px 12px;
+        font-size: 0.78rem;
+        margin-right: 4px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("### Policy Documents")
-    docs = {
-        "Anti-Money Laundering": "Monitoring thresholds, SAR filing, CDD procedures",
-        "Know Your Customer": "Identity verification, risk tiers, document refresh",
-        "Trade Surveillance": "Pre/post-trade monitoring, restricted list, escalation",
-        "Data Governance & AI": "Data classification, access control, AI model approval",
-    }
-    for name, desc in docs.items():
-        st.markdown(f"**{name}**")
-        st.caption(desc)
+    st.markdown("## ⚖️ Compliance RAG")
+    st.caption("AI-powered policy Q&A · Financial Services")
+    st.divider()
+
+    st.markdown("**Indexed documents**")
+    docs = [
+        ("🔍", "Anti-Money Laundering", "Thresholds, SARs, CDD"),
+        ("🪪", "Know Your Customer", "Verification, risk tiers"),
+        ("📈", "Trade Surveillance", "Monitoring, escalation"),
+        ("🗄️", "Data Governance & AI", "Classification, model approval"),
+    ]
+    for icon, name, desc in docs:
+        st.markdown(f"{icon} **{name}**")
+        st.caption(f"&nbsp;&nbsp;&nbsp;&nbsp;{desc}")
 
     st.divider()
-    st.markdown("**[View on GitHub](https://github.com/aylineuyar-arch/compliance-rag-demo)**")
+    st.markdown("[![GitHub](https://img.shields.io/badge/View_on-GitHub-181717?logo=github)](https://github.com/aylineuyar-arch/compliance-rag-demo)")
     st.divider()
-    if st.button("Clear chat", use_container_width=True):
+    if st.button("🗑️ Clear chat", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
-    st.caption("All documents are synthetic/fictional.")
+    st.caption("Documents are synthetic/fictional.")
 
 # ── Load pipeline ─────────────────────────────────────────────────────────────
 DOCUMENTS_DIR = os.path.join(os.path.dirname(__file__), "documents")
@@ -55,7 +77,7 @@ except ValueError as e:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# ── Hero + examples (shown only on empty state) ───────────────────────────────
+# ── Empty state ───────────────────────────────────────────────────────────────
 EXAMPLES = [
     "What are the transaction monitoring thresholds for suspicious activity?",
     "What documents are required for enhanced due diligence KYC?",
@@ -64,17 +86,24 @@ EXAMPLES = [
 ]
 
 if not st.session_state.messages:
-    st.title("⚖️ Compliance Policy Q&A")
-    st.info("Ask any question about AML, KYC, trade surveillance, or data governance — answers are grounded in internal policy documents.")
+    st.markdown("# Compliance Policy Q&A")
+    st.markdown("Ask anything about AML, KYC, trade surveillance, or data governance. Answers are grounded in internal policy documents — no hallucination.")
 
-    st.markdown("**Try an example question:**")
-    cols = st.columns(2)
+    # Stat cards
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Documents indexed", "4")
+    c2.metric("Policy areas covered", "AML · KYC · Trade · Data")
+    c3.metric("Powered by", "Claude Haiku")
+
+    st.divider()
+    st.markdown("**Example questions — click to ask:**")
+    col1, col2 = st.columns(2)
     for i, example in enumerate(EXAMPLES):
-        if cols[i % 2].button(example, use_container_width=True):
+        if (col1 if i % 2 == 0 else col2).button(example, use_container_width=True):
             st.session_state.pending_query = example
             st.rerun()
 
-# ── Render existing chat messages ─────────────────────────────────────────────
+# ── Render chat history ───────────────────────────────────────────────────────
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"].replace("$", r"\$"))
@@ -84,16 +113,7 @@ query = st.chat_input("Ask a compliance question...")
 if "pending_query" in st.session_state:
     query = st.session_state.pop("pending_query")
 
-# ── Confidence helper ─────────────────────────────────────────────────────────
-def confidence_label(score: float) -> str:
-    if score >= 0.70:
-        return "🟢 High confidence"
-    elif score >= 0.50:
-        return "🟡 Medium confidence"
-    else:
-        return "🔴 Low confidence"
-
-# ── Process new query ─────────────────────────────────────────────────────────
+# ── Process query ─────────────────────────────────────────────────────────────
 if query:
     st.session_state.messages.append({"role": "user", "content": query})
     with st.chat_message("user"):
@@ -111,19 +131,23 @@ if query:
 
             st.write("Preparing your answer...")
             answer = pipeline.generate(query, chunks)
-            status.update(label="Here's what I found", state="complete", expanded=False)
+            status.update(label="Done", state="complete", expanded=False)
 
         st.markdown(answer.replace("$", r"\$"))
 
-        # Confidence + sources
+        # Confidence + source chips
         top_score = chunks[0]["similarity"] if chunks else 0
-        sources = " · ".join(
-            c["source"].replace(".txt", "").replace("_", " ").title()
+        if top_score >= 0.70:
+            conf = "🟢 High confidence"
+        elif top_score >= 0.50:
+            conf = "🟡 Medium confidence"
+        else:
+            conf = "🔴 Low confidence"
+
+        chips = "".join(
+            f'<span class="chip">{c["source"].replace(".txt","").replace("_"," ").title()}</span>'
             for c in chunks
         )
-        st.caption(f"{confidence_label(top_score)}  |  Sources: {sources}")
+        st.markdown(f"<div style='margin-top:0.4rem'>{conf} &nbsp; {chips}</div>", unsafe_allow_html=True)
 
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": answer,
-    })
+    st.session_state.messages.append({"role": "assistant", "content": answer})
