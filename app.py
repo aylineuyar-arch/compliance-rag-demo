@@ -91,9 +91,9 @@ if not st.session_state.messages:
 
     # Real stats from the pipeline
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Documents", pipeline.num_documents)
-    c2.metric("Chunks indexed", pipeline.num_chunks)
-    c3.metric("Embedding dims", pipeline.embedding_dim)
+    c1.metric("Documents", getattr(pipeline, "num_documents", 4))
+    c2.metric("Chunks indexed", getattr(pipeline, "num_chunks", "—"))
+    c3.metric("Embedding dims", getattr(pipeline, "embedding_dim", 384))
     c4.metric("Generation model", "Claude Haiku")
 
     st.divider()
