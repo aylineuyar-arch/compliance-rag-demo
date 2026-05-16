@@ -87,15 +87,30 @@ EXAMPLES = [
 
 if not st.session_state.messages:
     st.markdown("# Compliance Policy Q&A")
-    st.markdown("Ask anything about AML, KYC, trade surveillance, or data governance. Answers are grounded in internal policy documents — no hallucination.")
+    st.markdown("Ask any operational compliance question. Answers are retrieved directly from indexed policy documents — no hallucination, grounded in the exact text.")
 
-    # Stat cards
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Documents indexed", "4")
-    c2.metric("Policy areas covered", "AML · KYC · Trade · Data")
-    c3.metric("Powered by", "Claude Haiku")
+    # Real stats from the pipeline
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Documents", pipeline.num_documents)
+    c2.metric("Chunks indexed", pipeline.num_chunks)
+    c3.metric("Embedding dims", pipeline.embedding_dim)
+    c4.metric("Generation model", "Claude Haiku")
 
     st.divider()
+
+    # How it works expander
+    with st.expander("How this works", expanded=False):
+        st.markdown("""
+**Retrieval-Augmented Generation (RAG)** — not fine-tuning, not general LLM knowledge.
+
+1. **Ingest** — each policy document is split into 200-word chunks with 50-word overlap to avoid losing context at boundaries.
+2. **Embed** — every chunk is encoded into a 384-dimensional vector using `all-MiniLM-L6-v2`, a local embedding model. No API call, no data leaving your machine.
+3. **Retrieve** — your question is embedded with the same model. Cosine similarity is computed against all chunk vectors in memory (numpy). The top 3 most relevant passages are returned.
+4. **Generate** — retrieved passages are injected into a structured prompt. Claude answers strictly from that context. If the answer isn't in the documents, it says so.
+
+**Why this matters for compliance:** Every answer is traceable to a specific policy passage. That's the audit trail regulators and internal controls require — something a fine-tuned model can't provide.
+        """)
+
     st.markdown("**Example questions — click to ask:**")
     col1, col2 = st.columns(2)
     for i, example in enumerate(EXAMPLES):
@@ -130,7 +145,15 @@ if query:
                 st.caption(f"— {source}")
 
             st.write("Preparing your answer...")
-            answer = pipeline.generate(query, chunks)
+            # Pass prior turns so Claude has conversation memory
+            chat_history = [
+                {"role": m["role"], "content": m["content"]}
+                for m in st.session_state.messages[:-1]  # exclude current user turn
+            ]
+            answer = pipeline.generate(query, chunks, chat_history=chat_history)
+
+            st.write("Generating follow-up questions...")
+            followups = pipeline.suggest_followups(query, answer)
             status.update(label="Done", state="complete", expanded=False)
 
         st.markdown(answer.replace("$", r"\$"))
@@ -138,16 +161,25 @@ if query:
         # Confidence + source chips
         top_score = chunks[0]["similarity"] if chunks else 0
         if top_score >= 0.70:
-            conf = "🟢 High confidence"
+            conf = "🟢 High relevance"
         elif top_score >= 0.50:
-            conf = "🟡 Medium confidence"
+            conf = "🟡 Moderate relevance"
         else:
-            conf = "🔴 Low confidence"
+            conf = "🔴 Low relevance — answer may be incomplete"
 
         chips = "".join(
-            f'<span class="chip">{c["source"].replace(".txt","").replace("_"," ").title()}</span>'
+            f'<span class="chip">{c["source"].replace(".txt","").replace("_"," ").title()} {c["similarity"]:.0%}</span>'
             for c in chunks
         )
         st.markdown(f"<div style='margin-top:0.4rem'>{conf} &nbsp; {chips}</div>", unsafe_allow_html=True)
+
+        # Follow-up question suggestions
+        if followups:
+            st.markdown("**You might also ask:**")
+            fu_cols = st.columns(len(followups))
+            for i, fq in enumerate(followups):
+                if fu_cols[i].button(fq, key=f"fu_{len(st.session_state.messages)}_{i}", use_container_width=True):
+                    st.session_state.pending_query = fq
+                    st.rerun()
 
     st.session_state.messages.append({"role": "assistant", "content": answer})

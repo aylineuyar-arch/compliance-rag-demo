@@ -85,6 +85,11 @@ class RAGPipeline:
         # --- Anthropic client ---
         self.client = anthropic.Anthropic(api_key=api_key)
 
+        # Expose metadata so the UI can display real stats
+        self.num_documents = len(documents)
+        self.num_chunks = len(self.chunks)
+        self.embedding_dim = self.embeddings.shape[1]  # 384 for all-MiniLM-L6-v2
+
         print("\nRAG pipeline ready.\n")
 
     def retrieve(self, query: str, top_k: int = 3) -> list[dict]:
@@ -117,16 +122,15 @@ class RAGPipeline:
 
         return results
 
-    def generate(self, query: str, retrieved_chunks: list[dict]) -> str:
+    def generate(self, query: str, retrieved_chunks: list[dict],
+                 chat_history: list[dict] | None = None) -> str:
         """
-        Send the query and retrieved context to Claude and return a cited answer.
+        Send the query, retrieved context, and optional conversation history to Claude.
 
-        The prompt instructs Claude to:
-          - Answer using ONLY the provided context (no hallucination).
-          - Cite the source document for each claim.
-          - Acknowledge if the context doesn't contain enough information.
+        chat_history is a list of {"role": "user"|"assistant", "content": str} dicts
+        representing prior turns. This gives the model memory of the conversation so
+        follow-up questions like "what about exceptions to that?" work correctly.
         """
-        # Build the context block from retrieved chunks
         context_parts = []
         for i, chunk in enumerate(retrieved_chunks, 1):
             context_parts.append(
@@ -134,42 +138,79 @@ class RAGPipeline:
             )
         context_block = "\n\n".join(context_parts)
 
-        prompt = f"""You are a compliance analyst assistant at a financial institution.
-Answer the question below using ONLY the provided compliance document excerpts.
-Write in clear, professional prose. Do not include any document names, file references, or citations.
-If the provided context does not contain enough information to answer fully, say so explicitly.
-Do not invent policies, thresholds, or procedures not present in the excerpts.
+        system_prompt = f"""You are a senior compliance analyst assistant at a financial institution.
+Your role is to answer operational compliance questions accurately and concisely, the way an experienced analyst would brief a colleague or relationship manager.
 
---- CONTEXT ---
+Rules:
+- Answer using ONLY the provided policy document excerpts. Do not draw on outside knowledge.
+- Write in clear, direct professional prose. No bullet points unless listing distinct items.
+- Do not mention document names, file references, or citations in your answer.
+- If the context is insufficient to answer fully, say so explicitly — do not speculate.
+- If a question involves a threshold, procedure, or deadline, be precise. Numbers matter in compliance.
+- Keep answers concise. A compliance officer reading this is busy.
+- You have access to the conversation history. Use it to interpret follow-up questions correctly.
+
+--- POLICY CONTEXT ---
 {context_block}
---- END CONTEXT ---
+--- END CONTEXT ---"""
 
-QUESTION: {query}
-
-ANSWER:"""
+        # Build messages: prior turns + current question
+        messages = []
+        if chat_history:
+            messages.extend(chat_history)
+        messages.append({"role": "user", "content": query})
 
         message = self.client.messages.create(
             model=GENERATION_MODEL,
             max_tokens=600,
-            messages=[{"role": "user", "content": prompt}],
+            system=system_prompt,
+            messages=messages,
         )
 
         return message.content[0].text.strip()
 
-    def ask(self, query: str, top_k: int = 3) -> dict:
+    def suggest_followups(self, query: str, answer: str) -> list[str]:
         """
-        Full RAG pipeline: retrieve relevant chunks, then generate a cited answer.
+        Ask Claude to generate 3 short follow-up questions a compliance officer
+        might naturally ask after receiving this answer. Makes the chat feel like
+        a real analyst conversation rather than isolated Q&A.
+        """
+        prompt = f"""A compliance officer asked: "{query}"
+
+The answer they received was:
+{answer}
+
+Generate exactly 3 short follow-up questions they might naturally ask next.
+Each question should be on its own line. No numbering, no bullet points, no explanation.
+Questions should be specific and operationally useful — not generic."""
+
+        message = self.client.messages.create(
+            model=GENERATION_MODEL,
+            max_tokens=150,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        lines = message.content[0].text.strip().split("\n")
+        return [q.strip("- •123.").strip() for q in lines if q.strip()][:3]
+
+    def ask(self, query: str, top_k: int = 3,
+            chat_history: list[dict] | None = None) -> dict:
+        """
+        Full RAG pipeline: retrieve → generate → suggest follow-ups.
 
         Returns:
             Dict with keys:
-              - "query":   the original question
-              - "chunks":  list of retrieved chunk dicts (with similarity scores)
-              - "answer":  Claude's generated answer string
+              - "query":      the original question
+              - "chunks":     list of retrieved chunk dicts (with similarity scores)
+              - "answer":     Claude's generated answer string
+              - "followups":  list of 3 suggested follow-up questions
         """
         retrieved = self.retrieve(query, top_k=top_k)
-        answer = self.generate(query, retrieved)
+        answer = self.generate(query, retrieved, chat_history=chat_history)
+        followups = self.suggest_followups(query, answer)
         return {
             "query": query,
             "chunks": retrieved,
             "answer": answer,
+            "followups": followups,
         }
