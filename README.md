@@ -1,6 +1,8 @@
 # Compliance RAG Demo — Retrieval-Augmented Generation for Financial Services
 
-A working end-to-end RAG pipeline that answers compliance questions using synthetic financial services policy documents, with clean conversational answers powered by Claude.
+AI chatbot that answers financial services compliance questions using internal policy documents — built with Claude.
+
+**[Live Demo](https://compliance-rag-demo-mrwtbs4k7gvdvmiuck8mdn.streamlit.app)**
 
 ---
 
@@ -12,7 +14,18 @@ Retrieval-Augmented Generation (RAG) is a technique for grounding large language
 
 ## Why Compliance Is the Highest-Value RAG Use Case in Financial Services
 
-Compliance analysts at financial institutions spend significant time manually searching policy documents, regulatory circulars, and internal procedure manuals to answer operational questions — what's the SAR filing deadline, what documents are required for enhanced due diligence, what's the escalation path for a surveillance alert. These questions are high-stakes (wrong answers create regulatory exposure), highly repetitive, and perfectly structured for RAG: the answer exists verbatim somewhere in internal documentation, it just needs to be found and surfaced. RAG automates this with answers that cite the exact source document and passage, creating an audit trail that satisfies internal controls and regulatory examination requirements. This demo shows the core pattern.
+Compliance analysts at financial institutions spend significant time manually searching policy documents, regulatory circulars, and internal procedure manuals to answer operational questions — what's the SAR filing deadline, what documents are required for enhanced due diligence, what's the escalation path for a surveillance alert. These questions are high-stakes (wrong answers create regulatory exposure), highly repetitive, and perfectly structured for RAG: the answer exists verbatim somewhere in internal documentation, it just needs to be found and surfaced. RAG automates this with grounded, auditable answers — creating a paper trail that satisfies internal controls and regulatory examination requirements. This demo shows the core pattern.
+
+---
+
+## Features
+
+- **Streaming responses** — answers stream token by token via Claude's streaming API, not delivered all at once after a pause
+- **Conversation memory** — follow-up questions work correctly; the model sees prior turns and interprets context ("what about exceptions to that?")
+- **Low-confidence fallback** — if no retrieved chunk scores above the similarity threshold, the system returns an honest "I couldn't find a clear answer" instead of a weak or hallucinated response
+- **Cross-document synthesis callout** — when an answer draws from multiple policy areas (e.g. AML + KYC), a banner surfaces this explicitly to show cross-policy reasoning
+- **Suggested follow-ups** — 3 clickable follow-up questions generated after each answer, the way a real analyst would continue the conversation
+- **Export session as CSV** — download the full Q&A session for audit records, Airtable import, or sharing
 
 ---
 
@@ -28,13 +41,17 @@ Embedding Model (sentence-transformers / all-MiniLM-L6-v2)
 Cosine Similarity Search over Document Chunks
     │  Compares query vector against all pre-indexed chunk vectors (numpy)
     ▼
-Top-K Relevant Chunks Retrieved
-    │  Returns the 3 most semantically similar passages with source filenames
+Confidence Check
+    │  If best match < 0.45 similarity, return fallback — no weak answers
     ▼
-Claude API (claude-haiku-4-5) — grounded generation
+Top-3 Relevant Chunks Retrieved
+    │  Returns most semantically similar passages; flags cross-document synthesis
+    ▼
+Claude API (claude-haiku-4-5) — streaming generation
     │  Prompt instructs Claude to answer only from retrieved context
+    │  Response streams token by token via st.write_stream()
     ▼
-Clean conversational answer
+Answer + Confidence indicator + Source tags + Follow-up suggestions
 ```
 
 ---
@@ -44,15 +61,15 @@ Clean conversational answer
 | Dimension | RAG | Fine-Tuning |
 |---|---|---|
 | **Document updates** | Instant — re-index the new document | Requires full retraining run |
-| **Auditability** | Every answer cites its source chunk | No visibility into what the model "learned" |
+| **Auditability** | Every answer traceable to a source chunk | No visibility into what the model "learned" |
 | **Cost** | Embedding + inference only | GPU compute for training + inference |
 | **Data requirements** | Works with any document corpus | Needs thousands of labelled Q&A pairs |
-| **Latency** | Fast (haiku is ~1–2s) | Same inference latency, higher training overhead |
-| **Failure mode** | Returns "not enough context" if answer isn't in docs | May confidently hallucinate if topic wasn't in training data |
+| **Latency** | Fast — haiku streams in ~1s | Same inference latency, higher training overhead |
+| **Failure mode** | Returns honest fallback if answer isn't in docs | May confidently hallucinate if topic wasn't in training data |
 
 Compliance documents change frequently — regulators update thresholds, internal policies are revised, new product lines require new procedures. RAG reflects those changes as soon as the updated document is ingested. Fine-tuning would require a new training run every time a threshold changes, which is operationally impractical.
 
-RAG answers are also auditable by design: the retrieved chunks are part of the system output, so a compliance officer or internal auditor can verify exactly which document passage generated the answer. This satisfies the kind of model explainability requirements that regulators increasingly impose under SR 11-7 (model risk management) and equivalent guidance.
+RAG answers are auditable by design: the retrieved chunks are part of the system output, so a compliance officer or internal auditor can verify exactly which document passage generated the answer. This satisfies the model explainability requirements regulators increasingly impose under SR 11-7 and equivalent guidance.
 
 ---
 
@@ -71,7 +88,7 @@ cd compliance-rag-demo
 pip install -r requirements.txt
 ```
 
-The sentence-transformers model (~90MB) will download automatically on first run.
+The sentence-transformers model (~90MB) downloads automatically on first run.
 
 **3. Set your Anthropic API key**
 ```bash
@@ -83,14 +100,14 @@ export ANTHROPIC_API_KEY=your_key_here
 streamlit run app.py
 ```
 
-Opens a chatbot interface in your browser at `http://localhost:8501`. Type any compliance question or click an example. The UI shows retrieval steps in real time — searching documents, reading relevant sections, then delivering a clean conversational answer.
+Opens at `http://localhost:8501`. Type any compliance question or click an example. Answers stream in real time. Follow-up questions are suggested after each answer. Export the session from the sidebar.
 
 **4b. Run the command-line demo**
 ```bash
 python3 main.py
 ```
 
-Runs 4 preset queries automatically, then enters an interactive prompt. Results are saved to `results.csv` for import into Airtable or Google Sheets.
+Runs 4 preset queries automatically, then enters an interactive prompt. Results are saved to `results.csv`.
 
 ---
 
@@ -99,33 +116,31 @@ Runs 4 preset queries automatically, then enters an interactive prompt. Results 
 | Component | Library | Why |
 |---|---|---|
 | Web UI | `streamlit` | Python-native, deploys to Streamlit Cloud for free |
-| Generation | `anthropic` / `claude-haiku-4-5` | Fast, cost-efficient, strong instruction-following |
-| Embeddings | `sentence-transformers` / `all-MiniLM-L6-v2` | Local inference, no API cost, strong semantic search |
-| Vector search | `numpy` (cosine similarity) | Zero overhead for demo-scale corpus (~100 chunks) |
+| Generation | `anthropic` / `claude-haiku-4-5` | Streaming API, fast, cost-efficient |
+| Embeddings | `sentence-transformers` / `all-MiniLM-L6-v2` | Local inference, no API cost, 384-dim semantic vectors |
+| Vector search | `numpy` cosine similarity | Zero overhead for demo-scale corpus |
 | Document storage | Plain `.txt` files | Simple, auditable, easy to update |
 
 ---
 
 ## Where This Would Be Used in Practice
 
-This demo shows the core pattern that would underpin several real workflows at a financial institution:
-
 **1. Compliance help desk automation**
-Today, junior compliance analysts field repetitive policy questions from the front office — "can we onboard this type of entity?", "what's the wire reporting threshold?". A RAG system answers these instantly, with citations, freeing analysts for higher-judgment work. Estimated time savings: 30–50% of tier-1 compliance queries.
+Front office asks repetitive policy questions — "can we onboard this entity type?", "what's the wire reporting threshold?" — today answered by a junior analyst manually searching PDFs. RAG answers in seconds. Estimated to cover 30–50% of tier-1 compliance queries.
 
 **2. Regulatory change management**
-When a regulator issues updated guidance (new FinCEN thresholds, revised FATF country lists), compliance teams must identify which internal policies are affected. RAG over both old and new regulatory text surfaces the delta automatically, reducing manual gap analysis from days to minutes.
+When FinCEN updates a threshold or FATF revises a country list, compliance teams manually identify which internal policies are affected. RAG over old and new regulatory text surfaces the gaps automatically — days of work reduced to minutes.
 
 **3. Audit and examination support**
-During a regulatory examination, examiners ask banks to produce evidence that specific policies exist and are followed. A RAG system over internal policy documents can instantly surface the relevant clause and its source, supporting faster examination response.
+During a regulatory exam, examiners ask banks to produce evidence that specific policies exist and are followed. RAG instantly surfaces the relevant clause and its source — faster examination response, less scrambling.
 
 **4. Onboarding workflow guidance**
-Relationship managers onboarding a new client type they haven't seen before (a foreign PEP, a crypto MSB) can query the KYC system in plain English and get a step-by-step requirements list with document citations — instead of escalating to Compliance or reading 40-page manuals.
+A relationship manager onboarding an unfamiliar client type (foreign PEP, crypto MSB) queries the system in plain English and gets a step-by-step requirements checklist — instead of escalating to Compliance or reading a 40-page manual.
 
 **5. Employee self-service compliance portal**
-A bank-wide internal chatbot where any employee can ask "am I allowed to trade this security?" or "what's the personal account dealing holding period?" — with answers grounded in current policy, not general LLM knowledge.
+Any employee can ask "am I allowed to trade this security?" or "what's the personal account dealing holding period?" — with answers grounded in current internal policy, not general LLM knowledge.
 
-**Why this matters for strategy roles:** The business case is straightforward — compliance headcount is expensive, regulatory risk is existential, and these queries are high-volume and highly repetitive. RAG is one of the few AI patterns where the ROI is immediate and the auditability requirement is already met by design.
+**Why this matters for strategy roles:** Compliance headcount is expensive, regulatory risk is existential, and these queries are high-volume and highly repetitive. RAG is one of the few AI patterns where the ROI is immediate and the auditability requirement is already met by design.
 
 ---
 
@@ -135,9 +150,9 @@ A bank-wide internal chatbot where any employee can ask "am I allowed to trade t
 compliance-rag-demo/
 ├── README.md                    # This file
 ├── requirements.txt             # anthropic, sentence-transformers, numpy, streamlit
-├── app.py                       # Streamlit chatbot UI — step-by-step retrieval + chat history
-├── main.py                      # CLI demo — runs 4 preset queries, exports results.csv
-├── rag_pipeline.py              # RAGPipeline class: embed, retrieve, generate
+├── app.py                       # Streamlit chatbot — streaming, memory, export, follow-ups
+├── main.py                      # CLI demo — 4 preset queries, exports results.csv
+├── rag_pipeline.py              # RAGPipeline: embed, retrieve, stream, confidence check
 ├── utils.py                     # Document loading and chunking helpers
 └── documents/
     ├── aml_policy.txt           # Synthetic AML policy (SAMPLE/FICTIONAL)
